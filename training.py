@@ -4,6 +4,8 @@ from torch import nn
 import time
 from model import BReGNeXt  # Assuming your model is saved in 'model.py'
 from tqdm import tqdm
+from preprocessing import prepare_data
+
 
 def train_model(train_loader, val_loader, model, epochs=10, lr=0.001):
     # Define loss function and optimizer
@@ -67,7 +69,7 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001):
 
 # Main execution
 if __name__ == "__main__":
-    image_folder = '/home/fer2013'
+    image_folder = './fer2013'
     train_loader, val_loader, test_loader, label_map = prepare_data(image_folder, val_split=0.2, batch_size=32)
 
     model = BReGNeXt(n_classes=len(label_map)).cuda()  # Adjust the number of classes based on your dataset
