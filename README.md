@@ -39,3 +39,9 @@ pip install -r requirements.txt
 ```bash
 source env/bin/activate
 ```
+
+## Train the Model
+
+```bash
+python train.py
+```
