@@ -106,3 +106,4 @@ class BReGNeXt(torch.nn.Module):
         net = self._conv0(net)
         # Handle the rest of the net
         return self._fc0(self._model(net).reshape(-1, 128))
+    
