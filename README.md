@@ -40,8 +40,8 @@ pip install -r requirements.txt
 source env/bin/activate
 ```
 
-## Train the Model
+## Run Model Training and Evaluation
 
 ```bash
-python train.py
+python run.py
 ```

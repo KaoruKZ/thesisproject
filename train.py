@@ -1,12 +1,11 @@
-import os
 import torch
 import torch.optim as optim
 from torch import nn
 from torch.cuda.amp import autocast, GradScaler
-from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
-from model import BReGNeXt  # Assuming your model is saved in 'model.py'
-from preprocessing import prepare_data
+import os
+from model import BReGNeXt
+from tqdm import tqdm
 
 def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, accumulation_steps=8, run_name='run'):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -20,12 +19,18 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, accumulati
     best_val_acc = 0.0
     epochs_without_improvement = 0
 
-    # Create output folder for this run
-    output_dir = f"outputs/{run_name}"
+    # Ensure the output directory structure is correct
+    output_dir = os.path.join("outputs", run_name)  # Correct path without double "outputs"
     os.makedirs(output_dir, exist_ok=True)
     
     # Create TensorBoard writer
     writer = SummaryWriter(log_dir=os.path.join(output_dir, 'logs'))
+
+    # Lists to store loss/accuracy for plotting
+    train_losses = []
+    val_losses = []
+    train_accuracies = []
+    val_accuracies = []
 
     for epoch in range(epochs):
         model.train()
@@ -63,7 +68,8 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, accumulati
             if (i + 1) % 10 == 0:
                 # Log gradients
                 for name, param in model.named_parameters():
-                    writer.add_histogram(f"gradients/{name}", param.grad, epoch * len(train_loader) + i)
+                    if param.grad is not None:  # Check if gradients exist
+                        writer.add_histogram(f"gradients/{name}", param.grad, epoch * len(train_loader) + i)
 
                 # Log parameter distributions
                 for name, param in model.named_parameters():
@@ -103,13 +109,19 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, accumulati
         # Log Learning Rate (from the scheduler)
         writer.add_scalar('Learning Rate', optimizer.param_groups[0]['lr'], epoch)
 
+        # Append the metrics for plotting
+        train_losses.append(avg_train_loss)
+        val_losses.append(avg_val_loss)
+        train_accuracies.append(train_acc)
+        val_accuracies.append(val_acc)
+
         print(f"Epoch [{epoch + 1}/{epochs}], Train Loss: {avg_train_loss:.4f}, "
               f"Train Acc: {train_acc:.2f}%, Val Acc: {val_acc:.2f}%")
 
         # Save the best model based on validation accuracy
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(model.state_dict(), f"{output_dir}/best_model.pth")
+            torch.save(model.state_dict(), os.path.join(output_dir, "best_model.pth"))
             print(f"Best model saved with accuracy: {best_val_acc:.2f}%")
             epochs_without_improvement = 0  # Reset patience counter
         else:
@@ -128,46 +140,8 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, accumulati
     print("Training complete.")
 
     # Save final model
-    torch.save(model.state_dict(), f"{output_dir}/final_model.pth")
+    torch.save(model.state_dict(), os.path.join(output_dir, "final_model.pth"))
 
     writer.close()  # Close the TensorBoard writer
 
     return model
-
-
-# Main execution
-if __name__ == "__main__":
-    # Define device (cuda if available, else cpu)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # Prepare data (batch size is set inside `prepare_data` function)
-    image_folder = './fer2013'
-    train_loader, val_loader, test_loader, label_map = prepare_data(image_folder, val_split=0.2, batch_size=8)
-
-    # Initialize the model and move it to the device (GPU or CPU)
-    model = BReGNeXt(n_classes=len(label_map)).to(device)
-
-    # Define run name (could be timestamp or any identifier for the current training run)
-    run_name = 'experiment_1'
-
-    # Train the model (no need to pass batch_size anymore)
-    model = train_model(train_loader, val_loader, model, epochs=10, lr=0.001, run_name=run_name)
-
-    # Test evaluation
-    model.eval()
-    correct_test = 0
-    total_test = 0
-    with torch.no_grad():
-        for inputs, labels in test_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
-
-            # Debugging shapes
-            print(f"Test - Input shape: {inputs.shape}, Output shape: {outputs.shape}")
-
-            _, predicted = torch.max(outputs, 1)
-            correct_test += (predicted == labels).sum().item()
-            total_test += labels.size(0)
-
-    test_acc = 100 * correct_test / total_test
-    print(f"Test Accuracy: {test_acc:.2f}%")
