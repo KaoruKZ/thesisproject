@@ -5,11 +5,10 @@ from torch import nn
 from torch.cuda.amp import autocast, GradScaler
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
-import matplotlib.pyplot as plt
 from model import BReGNeXt  # Assuming your model is saved in 'model.py'
 from preprocessing import prepare_data
 
-def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size=8, accumulation_steps=8, run_name='run'):
+def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, accumulation_steps=8, run_name='run'):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
@@ -27,12 +26,6 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size
     
     # Create TensorBoard writer
     writer = SummaryWriter(log_dir=os.path.join(output_dir, 'logs'))
-
-    # Lists to store loss/accuracy for plotting
-    train_losses = []
-    val_losses = []
-    train_accuracies = []
-    val_accuracies = []
 
     for epoch in range(epochs):
         model.train()
@@ -110,12 +103,6 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size
         # Log Learning Rate (from the scheduler)
         writer.add_scalar('Learning Rate', optimizer.param_groups[0]['lr'], epoch)
 
-        # Append the metrics for plotting
-        train_losses.append(avg_train_loss)
-        val_losses.append(avg_val_loss)
-        train_accuracies.append(train_acc)
-        val_accuracies.append(val_acc)
-
         print(f"Epoch [{epoch + 1}/{epochs}], Train Loss: {avg_train_loss:.4f}, "
               f"Train Acc: {train_acc:.2f}%, Val Acc: {val_acc:.2f}%")
 
@@ -143,36 +130,9 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size
     # Save final model
     torch.save(model.state_dict(), f"{output_dir}/final_model.pth")
 
-    # Plot training and validation loss/accuracy
-    plot_metrics(train_losses, val_losses, train_accuracies, val_accuracies, output_dir)
-
     writer.close()  # Close the TensorBoard writer
 
     return model
-
-
-def plot_metrics(train_losses, val_losses, train_accuracies, val_accuracies, output_dir):
-    # Plot Loss
-    plt.figure(figsize=(12, 6))
-    plt.plot(train_losses, label="Train Loss", color="blue")
-    plt.plot(val_losses, label="Validation Loss", color="red")
-    plt.title("Training and Validation Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.savefig(os.path.join(output_dir, "loss_plot.png"))
-    plt.close()
-
-    # Plot Accuracy
-    plt.figure(figsize=(12, 6))
-    plt.plot(train_accuracies, label="Train Accuracy", color="blue")
-    plt.plot(val_accuracies, label="Validation Accuracy", color="red")
-    plt.title("Training and Validation Accuracy")
-    plt.xlabel("Epoch")
-    plt.ylabel("Accuracy (%)")
-    plt.legend()
-    plt.savefig(os.path.join(output_dir, "accuracy_plot.png"))
-    plt.close()
 
 
 # Main execution
@@ -180,7 +140,7 @@ if __name__ == "__main__":
     # Define device (cuda if available, else cpu)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # Prepare data (adjust batch size)
+    # Prepare data (batch size is set inside `prepare_data` function)
     image_folder = './fer2013'
     train_loader, val_loader, test_loader, label_map = prepare_data(image_folder, val_split=0.2, batch_size=8)
 
@@ -190,8 +150,8 @@ if __name__ == "__main__":
     # Define run name (could be timestamp or any identifier for the current training run)
     run_name = 'experiment_1'
 
-    # Train the model
-    model = train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size=8, run_name=run_name)
+    # Train the model (no need to pass batch_size anymore)
+    model = train_model(train_loader, val_loader, model, epochs=10, lr=0.001, run_name=run_name)
 
     # Test evaluation
     model.eval()
