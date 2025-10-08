@@ -1,12 +1,15 @@
+import os
 import torch
 import torch.optim as optim
 from torch import nn
 from torch.cuda.amp import autocast, GradScaler
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
 from model import BReGNeXt  # Assuming your model is saved in 'model.py'
 from preprocessing import prepare_data
 
-def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size=8, accumulation_steps=8):
+def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size=8, accumulation_steps=8, run_name='run'):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
@@ -17,6 +20,19 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size
     scaler = GradScaler()  # For mixed precision training
     best_val_acc = 0.0
     epochs_without_improvement = 0
+
+    # Create output folder for this run
+    output_dir = f"outputs/{run_name}"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create TensorBoard writer
+    writer = SummaryWriter(log_dir=os.path.join(output_dir, 'logs'))
+
+    # Lists to store loss/accuracy for plotting
+    train_losses = []
+    val_losses = []
+    train_accuracies = []
+    val_accuracies = []
 
     for epoch in range(epochs):
         model.train()
@@ -50,11 +66,22 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size
             correct_train += (predicted == labels).sum().item()
             total_train += labels.size(0)
 
+            # Log gradients and parameters every 10 batches (you can adjust this)
+            if (i + 1) % 10 == 0:
+                # Log gradients
+                for name, param in model.named_parameters():
+                    writer.add_histogram(f"gradients/{name}", param.grad, epoch * len(train_loader) + i)
+
+                # Log parameter distributions
+                for name, param in model.named_parameters():
+                    writer.add_histogram(f"parameters/{name}", param, epoch * len(train_loader) + i)
+
         avg_train_loss = running_loss / len(train_loader)
         train_acc = 100 * correct_train / total_train
 
         # Validation phase
         model.eval()
+        running_val_loss = 0.0
         correct_val = 0
         total_val = 0
         with torch.no_grad():
@@ -64,11 +91,30 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size
                 # Disable mixed precision on specific layers that may cause issues
                 with autocast(enabled=False):  # Disable autocast for validation
                     outputs = model(inputs)
+                    loss = criterion(outputs, labels)
+                    running_val_loss += loss.item()
+
                     _, predicted = torch.max(outputs, 1)
                     correct_val += (predicted == labels).sum().item()
                     total_val += labels.size(0)
 
+        avg_val_loss = running_val_loss / len(val_loader)
         val_acc = 100 * correct_val / total_val
+
+        # Log to TensorBoard
+        writer.add_scalar('Loss/train', avg_train_loss, epoch)
+        writer.add_scalar('Loss/val', avg_val_loss, epoch)
+        writer.add_scalar('Accuracy/train', train_acc, epoch)
+        writer.add_scalar('Accuracy/val', val_acc, epoch)
+
+        # Log Learning Rate (from the scheduler)
+        writer.add_scalar('Learning Rate', optimizer.param_groups[0]['lr'], epoch)
+
+        # Append the metrics for plotting
+        train_losses.append(avg_train_loss)
+        val_losses.append(avg_val_loss)
+        train_accuracies.append(train_acc)
+        val_accuracies.append(val_acc)
 
         print(f"Epoch [{epoch + 1}/{epochs}], Train Loss: {avg_train_loss:.4f}, "
               f"Train Acc: {train_acc:.2f}%, Val Acc: {val_acc:.2f}%")
@@ -76,7 +122,7 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size
         # Save the best model based on validation accuracy
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(model.state_dict(), "best_model.pth")
+            torch.save(model.state_dict(), f"{output_dir}/best_model.pth")
             print(f"Best model saved with accuracy: {best_val_acc:.2f}%")
             epochs_without_improvement = 0  # Reset patience counter
         else:
@@ -93,7 +139,40 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size
         torch.cuda.empty_cache()
 
     print("Training complete.")
+
+    # Save final model
+    torch.save(model.state_dict(), f"{output_dir}/final_model.pth")
+
+    # Plot training and validation loss/accuracy
+    plot_metrics(train_losses, val_losses, train_accuracies, val_accuracies, output_dir)
+
+    writer.close()  # Close the TensorBoard writer
+
     return model
+
+
+def plot_metrics(train_losses, val_losses, train_accuracies, val_accuracies, output_dir):
+    # Plot Loss
+    plt.figure(figsize=(12, 6))
+    plt.plot(train_losses, label="Train Loss", color="blue")
+    plt.plot(val_losses, label="Validation Loss", color="red")
+    plt.title("Training and Validation Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.savefig(os.path.join(output_dir, "loss_plot.png"))
+    plt.close()
+
+    # Plot Accuracy
+    plt.figure(figsize=(12, 6))
+    plt.plot(train_accuracies, label="Train Accuracy", color="blue")
+    plt.plot(val_accuracies, label="Validation Accuracy", color="red")
+    plt.title("Training and Validation Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy (%)")
+    plt.legend()
+    plt.savefig(os.path.join(output_dir, "accuracy_plot.png"))
+    plt.close()
 
 
 # Main execution
@@ -108,8 +187,11 @@ if __name__ == "__main__":
     # Initialize the model and move it to the device (GPU or CPU)
     model = BReGNeXt(n_classes=len(label_map)).to(device)
 
+    # Define run name (could be timestamp or any identifier for the current training run)
+    run_name = 'experiment_1'
+
     # Train the model
-    model = train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size=8)
+    model = train_model(train_loader, val_loader, model, epochs=10, lr=0.001, batch_size=8, run_name=run_name)
 
     # Test evaluation
     model.eval()
