@@ -1,4 +1,5 @@
 import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 from datetime import datetime
 from train import train_model
 from data_preprocess import prepare_data
@@ -41,7 +42,7 @@ def run_training(image_folder, epochs=1, batch_size=8, lr=0.001, val_split=0.2):
     train_loader, val_loader, emotion_map = prepare_data(image_folder, val_split=val_split, batch_size=batch_size)
 
     # Initialize the model
-    model = BReGNeXt(n_classes=len(emotion_map))  # Ensure the model's output layer matches the number of classes
+    model = BReGNeXt(n_classes=7)  # Ensure the model's output layer matches the number of classes
 
     # Start training the model
     model = train_model(train_loader, val_loader, model, epochs=epochs, lr=lr, run_name=run_name)
@@ -52,4 +53,4 @@ if __name__ == "__main__":
     image_folder = './fer2013'  # Path to your dataset folder
 
     # Start the training process
-    run_training(image_folder, epochs=10, batch_size=8, lr=0.001, val_split=0.2)
+    run_training(image_folder, epochs=2000, batch_size=32, lr=0.001, val_split=0.2)

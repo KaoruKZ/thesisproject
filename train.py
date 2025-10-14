@@ -1,9 +1,11 @@
 import torch
+
 import torch.optim as optim
 from torch import nn
 from torch.cuda.amp import autocast, GradScaler
 from torch.utils.tensorboard import SummaryWriter
 import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 from model import BReGNeXt
 from tqdm import tqdm
 
@@ -13,9 +15,9 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, accumulati
 
     criterion = nn.CrossEntropyLoss()  # For classification
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)  # Decay lr every 5 epochs
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, factor=0.1)
 
-    scaler = GradScaler()  # For mixed precision training
+    scaler = torch.amp.GradScaler()  # For mixed precision training
     best_val_acc = 0.0
     epochs_without_improvement = 0
 
@@ -128,11 +130,11 @@ def train_model(train_loader, val_loader, model, epochs=10, lr=0.001, accumulati
             epochs_without_improvement += 1
 
         # Early stopping check
-        if epochs_without_improvement >= 3:
+        if epochs_without_improvement >= 15:
             print("Early stopping triggered.")
             break
 
-        scheduler.step()  # Step the learning rate scheduler
+        scheduler.step(avg_val_loss)  # Step the learning rate scheduler
 
         # Clear cache to avoid fragmentation
         torch.cuda.empty_cache()

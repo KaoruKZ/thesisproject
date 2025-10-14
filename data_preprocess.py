@@ -27,7 +27,7 @@ class ImageEmotionDataset(Dataset):
         
         return image, label
 
-def prepare_data(image_folder, val_split=0.2, batch_size=8):
+def prepare_data(image_folder, val_split=0.2, batch_size=32):
     # Emotion classes
     classes = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
     
@@ -42,20 +42,41 @@ def prepare_data(image_folder, val_split=0.2, batch_size=8):
             if filename.endswith(".jpg"):  # Only consider .jpg files
                 image_paths.append(os.path.join(class_dir, filename))
                 labels.append(idx)  # Label is the index of the class
-
+    
     # Split the data into training and validation
     train_paths, val_paths, train_labels, val_labels = train_test_split(
         image_paths, labels, test_size=val_split, stratify=labels)
+    
+    # # Define transforms for the images
+    # transform = transforms.Compose([
+    #     transforms.ToTensor(),  # Convert to tensor
+    #     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Normalize
+    # ])
 
-    # Define transforms for the images
-    transform = transforms.Compose([
+    # # Create datasets
+    # train_dataset = ImageEmotionDataset(train_paths, train_labels, transform=transform)
+    # val_dataset = ImageEmotionDataset(val_paths, val_labels, transform=transform)
+    # Define separate transforms for training and validation
+    train_transform = transforms.Compose([
+        transforms.Resize((48, 48)),  # FER2013 native resolution
+        transforms.RandomRotation(degrees=10),  # Random rotation ±10°
+        transforms.RandomHorizontalFlip(p=0.5),  # 50% chance horizontal flip
+        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Random translation
+        transforms.ColorJitter(brightness=0.2, contrast=0.2),  # Color variation
         transforms.ToTensor(),  # Convert to tensor
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Normalize
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Maps to [-1,1] range
     ])
 
-    # Create datasets
-    train_dataset = ImageEmotionDataset(train_paths, train_labels, transform=transform)
-    val_dataset = ImageEmotionDataset(val_paths, val_labels, transform=transform)
+    val_transform = transforms.Compose([
+        transforms.Resize((48, 48)),  # FER2013 native resolution
+        transforms.ToTensor(),  # Convert to tensor
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Maps to [-1,1] range
+    ])
+
+    # Create datasets with different transforms
+    train_dataset = ImageEmotionDataset(train_paths, train_labels, transform=train_transform)
+    val_dataset = ImageEmotionDataset(val_paths, val_labels, transform=val_transform)
+
 
     # Create data loaders
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
