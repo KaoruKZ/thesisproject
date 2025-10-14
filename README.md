@@ -45,3 +45,9 @@ source env/bin/activate
 ```bash
 python run.py
 ```
+
+## Tensorboard to check result
+
+```
+tensorboard --logdir=outputs
+```
